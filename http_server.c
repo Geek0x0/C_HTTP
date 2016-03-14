@@ -13,9 +13,12 @@
  * @param CallbackID [request handle id]
  * @param Func       [request handle func]
  */
-static inline void register_api_handle(uint32_t CallbackID,
-                                       APIFunc Func)
+void register_api_handle(uint32_t CallbackID,
+                         APIFunc Func)
 {
+	if (CallbackID > MAX_API)
+		return;
+
 	REGISTER_API(CallbackID, Func);
 }
 

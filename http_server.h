@@ -70,6 +70,7 @@ APIFunc APIFA[MAX_API];
 
 uint8_t init_http_server(char *);
 void release_http_server(void);
+void register_api_handle(uint32_t, APIFunc );
 
 
 #endif
