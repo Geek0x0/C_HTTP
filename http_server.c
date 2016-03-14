@@ -113,7 +113,7 @@ inline void return_404 (struct MHD_Connection * connection)
  * @param  fd   [return file fd]
  * @param  size [return file size]
  * @param  type [return file type]
- * @return      [success: 1, failure: 0]
+ * @return      [success: true, failure: false]
  */
 inline static uint8_t url_to_file(const char *url, int *fd,
                                   int *size, int *type)
@@ -165,12 +165,16 @@ __ERR_PROCESS:
 }
 
 /**
- * http requset api
+ * http request api
  * @param  url        [request url string]
- * @param  connection [http connect handle]
+ * @param  connection [http connet handle]
+ * @param  data       [post data]
+ * @param  size       [post data size]
+ * @return            [success: true, failure: false]
  */
 inline uint8_t url_to_api(const char *url,
-                          struct MHD_Connection * connection)
+                          struct MHD_Connection * connection,
+                          char *data, uint32_t size)
 {
 	int id, err;
 
@@ -178,7 +182,7 @@ inline uint8_t url_to_api(const char *url,
 	if (APIFA[id])
 	{
 		_cur_connect = connection;
-		err = APIFA[id]();
+		err = APIFA[id]((const char*)data, (const uint32_t)size);
 	}
 	else
 		return false;
@@ -231,7 +235,7 @@ inline void process_get_url_requert(const char *url,
 		MHD_destroy_response(response);
 		return;
 	}
-	else if (url_to_api(url, connection))
+	else if (url_to_api(url, connection, NULL, 0))
 		return;
 	else
 		return_404(connection);
@@ -404,7 +408,9 @@ inline int http_request_handle (void *cls, struct MHD_Connection *connection, co
 			}
 			else
 			{
-				url_to_api(url, connection);
+				url_to_api(url, connection,
+				           next_connection->post_data, next_connection->post_data_len);
+
 				if (next_connection->post_data)
 				{
 					free(next_connection->post_data);

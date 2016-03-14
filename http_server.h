@@ -67,7 +67,7 @@ typedef struct {
 	uint32_t file_size;
 } next_connection_info;
 
-typedef int (*APIFunc) (void);
+typedef int (*APIFunc) (const char *data, const uint32_t size);
 APIFunc APIFA[MAX_API];
 #define REGISTER_API(ID, FUNC) APIFA[ID] = FUNC;
 
