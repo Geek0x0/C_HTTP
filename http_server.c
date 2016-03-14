@@ -5,8 +5,7 @@
 * @Version 	[1.0]
 */
 
-
-#include "WPT_server.h"
+#include "http_server.h"
 
 /**
  * register request api handle
@@ -64,6 +63,20 @@ inline void set_mime(struct MHD_Response *response,
 	}
 	MHD_add_response_header(response,
 	                        MHD_HTTP_HEADER_CONTENT_TYPE, type_string);
+}
+
+/**
+ * response 200 ok
+ * @param connection [http connect handle]
+ */
+inline void return_200 (struct MHD_Connection * connection)
+{
+	struct MHD_Response *response =
+	    MHD_create_response_from_buffer (strlen (_200_page),
+	                                     (void *) _200_page, MHD_RESPMEM_PERSISTENT);
+	set_mime(response, HTM_FILE);
+	MHD_queue_response (connection, MHD_HTTP_OK, response);
+	MHD_destroy_response (response);
 }
 
 /**
@@ -163,9 +176,14 @@ inline uint8_t url_to_api(const char *url,
 
 	id = atoi(url);
 	if (APIFA[id])
-		err = APIFA[id](connection);
+	{
+		_cur_connect = connection;
+		err = APIFA[id]();
+	}
 	else
 		return false;
+
+	_cur_connect = NULL;
 
 	if (err < 0)
 	{
@@ -173,9 +191,31 @@ inline uint8_t url_to_api(const char *url,
 		return true;
 	}
 	else
+	{
+		return_200(connection);
 		return false;
+	}
 }
 
+/**
+ * get request api url param
+ * @param  key [url param key]
+ * @return     [success: value, failure: NULL]
+ */
+inline const char *get_url_param(char *key)
+{
+	if (_cur_connect)
+		return MHD_lookup_connection_value(_cur_connect,
+		                                   MHD_GET_ARGUMENT_KIND, key);
+	else
+		return NULL;
+}
+
+/**
+ * process http get request
+ * @param url        [request url string]
+ * @param connection [http connect handle]
+ */
 inline void process_get_url_requert(const char *url,
                                     struct MHD_Connection * connection)
 {

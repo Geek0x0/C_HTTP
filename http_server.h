@@ -18,10 +18,12 @@
 #include <fcntl.h>
 #include <microhttpd.h> //gcc -lmicrohttpt
 
+#define PORT_NUMBER 	80
+#define MAX_API 		100
+
 struct MHD_Daemon *_http_daemon;
-#define PORT_NUMBER 80
+struct MHD_Connection * _cur_connect;
 static char WEB_PATH[128];
-#define MAX_API 100
 
 #define true 1
 #define false 0
@@ -44,9 +46,11 @@ static char WEB_PATH[128];
 #define SIZE_OFFSET     	5
 #define NAME_OFFSET     	9
 
-const static char * _404_page = "<html><head><title>404 Error</title></head><body>	\
+const static char * _200_page = "<html><head><title>200 Success</title></head><body>	\
+		<h1>Request Request successfully processed</h1></body></html>";
+const static char * _404_page = "<html><head><title>404 Error</title></head><body>		\
 		<h1>Request Not Found</h1></body></html>";
-const static char * _500_page = "<html><head><title>500 Error</title></head><body>	\
+const static char * _500_page = "<html><head><title>500 Error</title></head><body>		\
 	<h1>Request API Not Found or Handle Error</h1></body></html>";
 
 typedef struct {
@@ -63,14 +67,15 @@ typedef struct {
 	uint32_t file_size;
 } next_connection_info;
 
-typedef int (*APIFunc) (struct MHD_Connection * connection);
+typedef int (*APIFunc) (void);
 APIFunc APIFA[MAX_API];
 #define REGISTER_API(ID, FUNC) APIFA[ID] = FUNC;
 
 
 uint8_t init_http_server(char *);
 void release_http_server(void);
-void register_api_handle(uint32_t, APIFunc );
+void register_api_handle(uint32_t, APIFunc);
+inline const char *get_url_param(char *);
 
 
 #endif
