@@ -18,6 +18,8 @@
 #include <fcntl.h>
 #include <microhttpd.h> //gcc -lmicrohttpt
 
+#define DEBUG 1
+
 #define PORT_NUMBER 	80
 #define MAX_API 		100
 
@@ -38,6 +40,7 @@ static char WEB_PATH[128];
 #define CSV_FILE 0x7
 #define PDF_FILE 0x8
 #define APP_FILE 0x9
+#define JSO_FILE 0x10
 
 #define UPLOAD_SYMBLE 		"\r\n"
 #define UPLOAD_SYMBLE_NB    3
@@ -47,11 +50,11 @@ static char WEB_PATH[128];
 #define NAME_OFFSET     	9
 
 const static char * _200_page = "<html><head><title>200 Success</title></head><body>	\
-		<h1>Request Request successfully processed</h1></body></html>";
+		<h1>Request successfully processed</h1></body></html>";
 const static char * _404_page = "<html><head><title>404 Error</title></head><body>		\
 		<h1>Request Not Found</h1></body></html>";
 const static char * _500_page = "<html><head><title>500 Error</title></head><body>		\
-	<h1>Request API Not Found or Handle Error</h1></body></html>";
+	<h1>Request API Not Found or Handle Error: %d</h1></body></html>";
 
 typedef struct {
 	char url[512];
@@ -67,7 +70,7 @@ typedef struct {
 	uint32_t file_size;
 } next_connection_info;
 
-typedef int (*APIFunc) (const char *data, const uint32_t size);
+typedef int (*APIFunc) (const char *data, const uint32_t size, char **response_data);
 APIFunc APIFA[MAX_API];
 #define REGISTER_API(ID, FUNC) APIFA[ID] = FUNC;
 

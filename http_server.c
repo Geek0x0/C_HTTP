@@ -60,6 +60,9 @@ inline void set_mime(struct MHD_Response *response,
 		case APP_FILE:
 			type_string = "application/x-msdownload";
 			break;
+		case JSO_FILE:
+			type_string = "application/json";
+			break;
 	}
 	MHD_add_response_header(response,
 	                        MHD_HTTP_HEADER_CONTENT_TYPE, type_string);
@@ -80,14 +83,34 @@ inline void return_200 (struct MHD_Connection * connection)
 }
 
 /**
+ * response custom 200 ok
+ * @param connection [http connect handle]
+ * @param response_data [custom response data]
+ * @param response_data [custom response data]
+ */
+inline void return_custom_200 (struct MHD_Connection * connection,
+                               char * response_data, int mime_type)
+{
+	struct MHD_Response *response =
+	    MHD_create_response_from_buffer (strlen (response_data),
+	                                     (void *) response_data, MHD_RESPMEM_MUST_FREE);
+	set_mime(response, mime_type);
+	MHD_queue_response (connection, MHD_HTTP_OK, response);
+	MHD_destroy_response (response);
+}
+
+/**
  * response 500 error
  * @param connection [http connect handle]
  */
-inline void return_500 (struct MHD_Connection * connection)
+inline void return_500 (struct MHD_Connection * connection, int err)
 {
+	char *string_of_error = malloc(1024);
+	if (string_of_error)
+		sprintf(string_of_error, _500_page, err);
 	struct MHD_Response *response =
-	    MHD_create_response_from_buffer (strlen (_500_page),
-	                                     (void *) _500_page, MHD_RESPMEM_PERSISTENT);
+	    MHD_create_response_from_buffer (strlen (string_of_error),
+	                                     (void *) string_of_error, MHD_RESPMEM_MUST_FREE);
 	set_mime(response, HTM_FILE);
 	MHD_queue_response (connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
 	MHD_destroy_response (response);
@@ -127,13 +150,13 @@ inline static uint8_t url_to_file(const char *url, int *fd,
 		sprintf(file_path, "%s%s", WEB_PATH, url);
 
 	if ((*fd = open(file_path, O_RDONLY)) < 0)
-		goto __ERR_PROCESS;
+		goto __NOT_FIND;
 
 	if (fstat(*fd, &f_stat) < 0)
-		goto __ERR_PROCESS;
+		goto __NOT_FIND;
 
 	if ((*size = f_stat.st_size) < 0)
-		goto __ERR_PROCESS;
+		goto __NOT_FIND;
 
 	if (strstr(url, ".html"))
 		*type = HTM_FILE;
@@ -153,15 +176,15 @@ inline static uint8_t url_to_file(const char *url, int *fd,
 		*type = PDF_FILE;
 	else if (strstr(url, ".exe"))
 		*type = APP_FILE;
+	else if (strstr(url, ".json"))
+		*type = JSO_FILE;
 	else
 		*type = HTM_FILE;
 
-	return 1;
+	return true;
 
-__ERR_PROCESS:
-	fprintf(stderr, "%s, %d, %s, path:%s\n",
-	        __FILE__, __LINE__, __FUNCTION__, file_path);
-	return 0;
+__NOT_FIND:
+	return false;
 }
 
 /**
@@ -176,27 +199,34 @@ inline uint8_t url_to_api(const char *url,
                           struct MHD_Connection * connection,
                           char *data, uint32_t size)
 {
-	int id, err;
+	int err, api_id = atoi(url + 1);
+	char *response_data = NULL;
 
-	id = atoi(url);
-	if (APIFA[id])
+	if (!api_id)
+		return_404(connection);
+
+
+	if (APIFA[api_id])
 	{
 		_cur_connect = connection;
-		err = APIFA[id]((const char*)data, (const uint32_t)size);
+		err = APIFA[api_id]((const char*)data, (const uint32_t)size, &response_data);
 	}
 	else
-		return false;
+		return_404(connection);
 
 	_cur_connect = NULL;
 
 	if (err < 0)
 	{
-		return_500(connection);
+		return_500(connection, err);
 		return true;
 	}
 	else
 	{
-		return_200(connection);
+		if (response_data)
+			return_custom_200(connection, response_data, JSO_FILE);
+		else
+			return_200(connection);
 		return false;
 	}
 }
@@ -421,6 +451,7 @@ inline int http_request_handle (void *cls, struct MHD_Connection *connection, co
 		else
 			return_404(connection);
 	}
+
 	return MHD_YES;
 }
 
