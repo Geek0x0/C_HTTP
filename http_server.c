@@ -29,43 +29,8 @@ void register_api_handle(uint32_t CallbackID,
 inline void set_mime(struct MHD_Response *response,
                      uint8_t type)
 {
-	char *type_string = NULL;
-
-	switch (type)
-	{
-		case HTM_FILE:
-			type_string = "text/html";
-			break;
-		case CSS_FILE:
-			type_string = "text/css";
-			break;
-		case JAS_FILE:
-			type_string = "application/x-javascript";
-			break;
-		case PNG_FILE:
-			type_string = "image/png";
-			break;
-		case JPG_FILE:
-			type_string = "image/jpeg";
-			break;
-		case XML_FILE:
-			type_string = "text/xml";
-			break;
-		case CSV_FILE:
-			type_string = "application/csv";
-			break;
-		case PDF_FILE:
-			type_string = "application/pdf";
-			break;
-		case APP_FILE:
-			type_string = "application/x-msdownload";
-			break;
-		case JSO_FILE:
-			type_string = "application/json";
-			break;
-	}
 	MHD_add_response_header(response,
-	                        MHD_HTTP_HEADER_CONTENT_TYPE, type_string);
+	                        MHD_HTTP_HEADER_CONTENT_TYPE, mime_type_string[type]);
 }
 
 /**
@@ -131,6 +96,21 @@ inline void return_404 (struct MHD_Connection * connection)
 }
 
 /**
+ * response 302
+ * @param connection [http connect handle]
+ */
+inline void return_302 (struct MHD_Connection * connection, const char *url)
+{
+	struct MHD_Response *response =
+	    MHD_create_response_from_buffer (strlen (_302_page),
+	                                     (void *) _302_page, MHD_RESPMEM_PERSISTENT);
+	MHD_add_response_header(response,
+	                        MHD_HTTP_HEADER_LOCATION, url);
+	MHD_queue_response (connection, MHD_HTTP_FOUND, response);
+	MHD_destroy_response (response);
+}
+
+/**
  * http request file
  * @param  url  [request url string]
  * @param  fd   [return file fd]
@@ -166,7 +146,7 @@ inline static uint8_t url_to_file(const char *url, int *fd,
 		*type = JAS_FILE;
 	else if (strstr(url, ".png"))
 		*type = PNG_FILE;
-	else if (strstr(url, ".jpg"))
+	else if (strstr(url, ".jpg") || strstr(url, ".jpeg"))
 		*type = JPG_FILE;
 	else if (strstr(url, ".xml"))
 		*type = XML_FILE;
@@ -176,8 +156,32 @@ inline static uint8_t url_to_file(const char *url, int *fd,
 		*type = PDF_FILE;
 	else if (strstr(url, ".exe"))
 		*type = APP_FILE;
-	else if (strstr(url, ".json"))
+	else if (strstr(url, ".json") || strstr(url, ".map"))
 		*type = JSO_FILE;
+	else if (strstr(url, ".txt") || strstr(url, ".conf"))
+		*type = TXT_FILE;
+	else if (strstr(url, ".woff") || strstr(url, ".woff2"))
+		*type = WOF_FILE;
+	else if (strstr(url, ".ttf"))
+		*type = TTF_FILE;
+	else if (strstr(url, ".eot"))
+		*type = EOT_FILE;
+	else if (strstr(url, ".otf"))
+		*type = OTF_FILE;
+	else if (strstr(url, ".svg"))
+		*type = SVG_FILE;
+	else if (strstr(url, ".mp3"))
+		*type = MP3_FILE;
+	else if (strstr(url, ".wav"))
+		*type = WAV_FILE;
+	else if (strstr(url, ".gif"))
+		*type = GIF_FILE;
+	else if (strstr(url, ".mp4"))
+		*type = MP4_FILE;
+	else if (strstr(url, ".avi"))
+		*type = AVI_FILE;
+	else if (strstr(url, ".flv"))
+		*type = FLV_FILE;
 	else
 		*type = HTM_FILE;
 
@@ -196,11 +200,14 @@ __NOT_FIND:
  * @return            [success: true, failure: false]
  */
 inline uint8_t url_to_api(const char *url,
-                          struct MHD_Connection * connection,
-                          char *data, uint32_t size)
+                          struct MHD_Connection * connection, uint8_t upload_file,
+                          char *data, uint32_t size, const char *file_name)
 {
 	int err, api_id = atoi(url + 1);
 	char *response_data = NULL;
+
+	uint8_t enable_redirect = false;
+	char redirect_url[2048] = { 0 };
 
 	if (!api_id)
 		return_404(connection);
@@ -209,7 +216,8 @@ inline uint8_t url_to_api(const char *url,
 	if (APIFA[api_id])
 	{
 		_cur_connect = connection;
-		err = APIFA[api_id]((const char*)data, (const uint32_t)size, &response_data);
+		err = APIFA[api_id]((const char*)data, (const uint32_t)size,
+		                    &response_data, &enable_redirect, redirect_url);
 	}
 	else
 		return_404(connection);
@@ -226,7 +234,12 @@ inline uint8_t url_to_api(const char *url,
 		if (response_data)
 			return_custom_200(connection, response_data, JSO_FILE);
 		else
-			return_200(connection);
+		{
+			if (enable_redirect)
+				return_302(connection, redirect_url);
+			else
+				return_200(connection);
+		}
 		return false;
 	}
 }
@@ -265,7 +278,7 @@ inline void process_get_url_requert(const char *url,
 		MHD_destroy_response(response);
 		return;
 	}
-	else if (url_to_api(url, connection, NULL, 0))
+	else if (url_to_api(url, connection, false, NULL, 0, NULL))
 		return;
 	else
 		return_404(connection);
@@ -309,6 +322,9 @@ static inline int upload_handle(char *content,
 	}
 
 	write_size = len - (real - content) - 1;
+	if (write_size > *file_size)
+		write_size = *file_size;
+
 	fd = open(file_name, O_RDWR | O_CREAT);
 	size = write(fd, real + 1, write_size);
 	close(fd);
@@ -438,8 +454,10 @@ inline int http_request_handle (void *cls, struct MHD_Connection *connection, co
 			}
 			else
 			{
-				url_to_api(url, connection,
-				           next_connection->post_data, next_connection->post_data_len);
+				url_to_api(url, connection, true,
+				           next_connection->post_data,
+				           next_connection->post_data_len,
+				           next_connection->file_name);
 
 				if (next_connection->post_data)
 				{
