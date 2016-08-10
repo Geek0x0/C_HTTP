@@ -10,18 +10,32 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <time.h>
 #include <microhttpd.h> //gcc -lmicrohttpt
 
 #define DEBUG 1
 
 #define PORT_NUMBER 	80
-#define MAX_API 		100
+#define MAX_API 		sizeof(uint8_t)
+#define MAX_FILE_CUSTOM_PATH	sizeof(uint8_t)
+#define FILE_PATH_LEN_MAX 128
+#define FILE_EXTEN_LEN_MAX 8
+
+#define ENABLE_AUTHENTICATE	0
+#define AUTHENTICATE_LOGIN_URL	"/login"
+#define AUTHENTICATE_COOKIE_FORAMT "%s=%llu;Max-Age=%d"
+#define AUTHENTICATE_COOKIE_NAME "Default_Cookie"
+#define AUTHENTICATE_COOKIE_TIME "360000"
+#define LOGIN_AUTHENTICATE_PASSWD	"ADMIN"
+#define LOGIN_HTML_PATH ""
+uint64_t last_cookie = 0;
 
 struct MHD_Daemon *_http_daemon;
 struct MHD_Connection * _cur_connect;
@@ -124,10 +138,14 @@ typedef int (*APIFunc) (const char *data, const uint32_t size,
 APIFunc APIFA[MAX_API];
 #define REGISTER_API(ID, FUNC) APIFA[ID] = FUNC;
 
+static uint8_t custom_file_path_nb;
+char CUSTOM_FILE_EXTEN[MAX_FILE_CUSTOM_PATH][FILE_EXTEN_LEN_MAX];
+char CUSTOM_FILE_PATH[MAX_FILE_CUSTOM_PATH][FILE_PATH_LEN_MAX];
 
 uint8_t init_http_server(char *);
 void release_http_server(void);
-void register_api_handle(uint32_t, APIFunc);
+int register_api_handle(uint32_t, APIFunc);
+int register_custom_file_path(const char*, const char*);
 inline const char *get_url_param(char *);
 
 

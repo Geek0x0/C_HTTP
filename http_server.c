@@ -7,18 +7,22 @@
 
 #include "http_server.h"
 
+inline int check_authentication(struct MHD_Connection *);
+inline void set_auth_cookie(struct MHD_Connection *);
+
 /**
  * register request api handle
  * @param CallbackID [request handle id]
  * @param Func       [request handle func]
  */
-void register_api_handle(uint32_t CallbackID,
-                         APIFunc Func)
+int register_api_handle(uint32_t CallbackID,
+                        APIFunc Func)
 {
-	if (CallbackID > MAX_API)
-		return;
+	if (CallbackID > MAX_API || CallbackID < 1)
+		return (-1);
 
 	REGISTER_API(CallbackID, Func);
+	return 0;
 }
 
 /**
@@ -111,6 +115,60 @@ inline void return_302 (struct MHD_Connection * connection, const char *url)
 }
 
 /**
+ * get file information
+ * @param  file_fd  [return file fd]
+ * @param  file_path   [file path]
+ * @param  file_size [return file size]
+ * @return      [success: true, failure: <0]
+ */
+inline int
+get_file_information (int *file_fd, char *file_path, int *file_size)
+{
+	struct stat file_stat_buf;
+
+	if (!file_fd || !file_path || !file_size)
+		return (-1);
+
+	if ((*file_fd = open (file_path, O_RDONLY)) < 0)
+		return (-2);
+
+	if (fstat (*file_fd, &file_stat_buf) < 0)
+		return (-3);
+
+	if ((*file_size = file_stat_buf.st_size) < 0)
+		return (-4);
+
+	return 0;
+}
+
+int register_custom_file_path(const char *file_exten, const char *file_path)
+{
+	int len_of_path = strlen(file_exten);
+	int len_of_path = strlen(file_path);
+
+	uint8_t file_exten_len =
+	    len_of_path > FILE_EXTEN_LEN_MAX ? FILE_EXTEN_LEN_MAX : len_of_path;
+	uint8_t file_path_len =
+	    len_of_path > FILE_PATH_LEN_MAX ? FILE_PATH_LEN_MAX : len_of_path;
+
+	memcpy(CUSTOM_FILE_EXTEN[custom_file_path_nb], file_exten, file_exten_len);
+	memcpy(CUSTOM_FILE_PATH[custom_file_path_nb], file_path, file_path_len);
+
+	custom_file_path_nb++;
+}
+
+inline char *return_file_path(const char *file_exten)
+{
+	uint8_t i;
+
+	for (i = 0; i < custom_file_path_nb; i++)
+		if (strstr(CUSTOM_FILE_EXTEN[i], file_exten))
+			return CUSTOM_FILE_PATH[i];
+
+	return WEB_PATH;
+}
+
+/**
  * http request file
  * @param  url  [request url string]
  * @param  fd   [return file fd]
@@ -122,73 +180,134 @@ inline static uint8_t url_to_file(const char *url, int *fd,
                                   int *size, int *type)
 {
 	struct stat f_stat;
-	char file_path[512] = { 0 };
-
-	if (!strcmp(url, "/"))
-		sprintf(file_path, "%s/%s", WEB_PATH, "index.html");
-	else
-		sprintf(file_path, "%s%s", WEB_PATH, url);
-
-	if ((*fd = open(file_path, O_RDONLY)) < 0)
-		goto __NOT_FIND;
-
-	if (fstat(*fd, &f_stat) < 0)
-		goto __NOT_FIND;
-
-	if ((*size = f_stat.st_size) < 0)
-		goto __NOT_FIND;
+	char file_full_path[512] = { 0 };
+	char *file_path = NULL;
 
 	if (strstr(url, ".html"))
+	{
 		*type = HTM_FILE;
+		file_path = return_file_path("html");
+	}
 	else if (strstr(url, ".css"))
+	{
 		*type = CSS_FILE;
+		file_path = return_file_path("css");
+	}
 	else if (strstr(url, ".js"))
+	{
 		*type = JAS_FILE;
+		file_path = return_file_path("js");
+	}
 	else if (strstr(url, ".png"))
+	{
 		*type = PNG_FILE;
+		file_path = return_file_path("png");
+	}
 	else if (strstr(url, ".jpg") || strstr(url, ".jpeg"))
+	{
 		*type = JPG_FILE;
+		file_path = return_file_path("jpg");
+	}
 	else if (strstr(url, ".xml"))
+	{
 		*type = XML_FILE;
+		file_path = return_file_path("xml");
+	}
 	else if (strstr(url, ".csv"))
+	{
 		*type = CSV_FILE;
+		file_path = return_file_path("csv");
+	}
 	else if (strstr(url, ".pdf"))
+	{
 		*type = PDF_FILE;
+		file_path = return_file_path("pdf");
+	}
 	else if (strstr(url, ".exe"))
+	{
 		*type = APP_FILE;
+		file_path = return_file_path("exe");
+	}
 	else if (strstr(url, ".json") || strstr(url, ".map"))
+	{
 		*type = JSO_FILE;
+		file_path = return_file_path("json");
+	}
 	else if (strstr(url, ".txt") || strstr(url, ".conf"))
+	{
 		*type = TXT_FILE;
+		file_path = return_file_path("txt");
+	}
 	else if (strstr(url, ".woff") || strstr(url, ".woff2"))
+	{
 		*type = WOF_FILE;
+		file_path = return_file_path("woff");
+	}
 	else if (strstr(url, ".ttf"))
+	{
 		*type = TTF_FILE;
+		file_path = return_file_path("ttf");
+	}
 	else if (strstr(url, ".eot"))
+	{
 		*type = EOT_FILE;
+		file_path = return_file_path("eot");
+	}
 	else if (strstr(url, ".otf"))
+	{
 		*type = OTF_FILE;
+		file_path = return_file_path("otf");
+	}
 	else if (strstr(url, ".svg"))
+	{
 		*type = SVG_FILE;
+		file_path = return_file_path("svg");
+	}
 	else if (strstr(url, ".mp3"))
+	{
 		*type = MP3_FILE;
+		file_path = return_file_path("mp3");
+	}
 	else if (strstr(url, ".wav"))
+	{
 		*type = WAV_FILE;
+		file_path = return_file_path("wav");
+	}
 	else if (strstr(url, ".gif"))
+	{
 		*type = GIF_FILE;
+		file_path = return_file_path("gif");
+	}
 	else if (strstr(url, ".mp4"))
+	{
 		*type = MP4_FILE;
+		file_path = return_file_path("mp4");
+	}
 	else if (strstr(url, ".avi"))
+	{
 		*type = AVI_FILE;
+		file_path = return_file_path("avi");
+	}
 	else if (strstr(url, ".flv"))
+	{
 		*type = FLV_FILE;
+		file_path = return_file_path("avi");
+	}
 	else
+	{
 		*type = HTM_FILE;
+		file_path = WEB_PATH;
+	}
+
+	if (!strcmp(url, "/"))
+		sprintf(file_full_path, "%s/%s", return_file_path, "index.html");
+	else
+		sprintf(file_full_path, "%s%s", return_file_path, url);
+
+	if (get_file_information (fd, file_full_path, size) < 0)
+		return false;
 
 	return true;
-
-__NOT_FIND:
-	return false;
 }
 
 /**
@@ -203,16 +322,29 @@ inline uint8_t url_to_api(const char *url,
                           struct MHD_Connection * connection, uint8_t upload_file,
                           char *data, uint32_t size, const char *file_name)
 {
-	int err, api_id = atoi(url + 1);
+	int err, api_id = atoi(url + 1);	/* remove '/' */
 	char *response_data = NULL;
 
 	uint8_t enable_redirect = false;
 	char redirect_url[2048] = { 0 };
 
-	if (!api_id)
-		return_404(connection);
+	/*
+		API ID 0, just reserve for login
+	*/
+	if (api_id == 0)
+	{
+		if (!strcmp(data, LOGIN_AUTHENTICATE_PASSWD))	//check login ok
+		{
+			set_auth_cookie(connection);
+			return true;
+		}
+		else
+			return_404(connection);
+	}
 
-
+	/*
+		process all register api
+	 */
 	if (APIFA[api_id])
 	{
 		_cur_connect = connection;
@@ -372,6 +504,62 @@ static inline void upload_Other_proc(next_connection_info* info,
 	}
 }
 
+inline int check_authentication(struct MHD_Connection *connection)
+{
+	struct MHD_Response *response;
+	const char *ver = NULL;
+	int fd;
+	int file_fd = 0, file_size = 0;
+	uint64_t cookie_value = 0;
+
+	//get request cookie by cookie name
+	ver = MHD_lookup_connection_value (connection, MHD_COOKIE_KIND,
+	                                   AUTHENTICATE_COOKIE_NAME);
+	if (ver)
+	{
+		cookie_value = atoll(ver);
+		if (cookie_value != last_cookie)
+			goto __AUTH_FAILED;
+		return 0;
+	}
+	else
+	{
+__AUTH_FAILED:
+		get_file_information (&file_fd, LOGIN_HTML_PATH, &file_size);
+		response = MHD_create_response_from_fd (file_size, file_fd);
+		MHD_queue_response (connection, MHD_HTTP_OK, response);
+		MHD_destroy_response (response);
+		return (-1);
+	}
+}
+
+static inline uint64_t get_random_cookie(void)
+{
+	uint64_t cookie;
+	cookie = lrand48();
+	cookie <<= 32;
+	cookie += lrand48();
+	return cookie;
+}
+
+inline void set_auth_cookie(struct MHD_Connection *connection)
+{
+	char response[64] = { 0 };
+	char cookie[256] = { 0 };
+
+	sprintf(response, "{\"login\": \"YES\"}");
+	last_cookie = get_random_cookie();
+	sprintf(cookie, AUTHENTICATE_COOKIE_FORAMT, AUTHENTICATE_COOKIE_NAME,
+	        last_cookie, AUTHENTICATE_COOKIE_TIME);
+
+	response = MHD_create_response_from_buffer (strlen(login),
+	           (void *)(login), MHD_RESPMEM_PERSISTENT);
+	MHD_add_response_header (response, MHD_HTTP_HEADER_SET_COOKIE,
+	                         set_coockie);
+	MHD_queue_response (connection, MHD_HTTP_OK, response);
+	MHD_destroy_response (response);
+}
+
 /**
  * http request handle
  */
@@ -379,9 +567,20 @@ inline int http_request_handle (void *cls, struct MHD_Connection *connection, co
                                 const char *method, const char *version, const char *upload_data,
                                 size_t * upload_data_size, void **con_cls)
 {
+#if ENABLE_AUTHENTICATE
+	//check request authenticate(cookie)
+	if (!(strstr(url , AUTHENTICATE_LOGIN_URL)))
+	{
+		if (check_authentication(connection) < 0)
+			return MHD_YES;
+	}
+#endif
+
 	if (!(*con_cls))
 	{
-		if (!strcmp(method, MHD_HTTP_METHOD_POST))
+		//process GET request or first POST request
+
+		if (!strcmp(method, MHD_HTTP_METHOD_POST))	//POST
 		{
 			next_connection_info *next_connection;
 			next_connection = calloc(sizeof(char),
@@ -417,7 +616,7 @@ inline int http_request_handle (void *cls, struct MHD_Connection *connection, co
 			}
 			*con_cls = (void *)next_connection;
 		}
-		else if (!strcmp(method, MHD_HTTP_METHOD_GET))
+		else if (!strcmp(method, MHD_HTTP_METHOD_GET))	//GET
 			process_get_url_requert(url, connection);
 	}
 	else
@@ -479,10 +678,22 @@ inline int http_request_handle (void *cls, struct MHD_Connection *connection, co
  */
 uint8_t init_http_server(char *path)
 {
+	uint8_t i;
+
 	if (!path)
-		return 0;
+		return false;
+
+	if (strlen(path) > FILE_PATH_LEN_MAX)
+		return false;
 
 	sprintf(WEB_PATH, "%s", path);
+
+	for (i = 0; i < MAX_FILE_CUSTOM_PATH; i++)
+	{
+		memset(CUSTOM_FILE_EXTEN[i], 0, FILE_EXTEN_LEN_MAX);
+		memset(CUSTOM_FILE_PATH[i], 0, FILE_PATH_LEN_MAX);
+	}
+	custom_file_path_nb = 0;
 
 	_http_daemon = MHD_start_daemon (
 	                   MHD_USE_SELECT_INTERNALLY,
@@ -490,6 +701,8 @@ uint8_t init_http_server(char *path)
 	                   MHD_OPTION_CONNECTION_TIMEOUT, (unsigned int) 120, MHD_OPTION_END);
 	if (!_http_daemon)
 		return false;
+
+	srand48(time(NULL));
 
 	printf ("HTTP Server is running on %d.\n", PORT_NUMBER);
 	return true;
